@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { djangoAPI } from "@/integrations/django/client";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,37 +12,49 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 interface Attendance {
-  id: string;
-  student_id: string;
-  class_id: string;
+  id: number;
+  student: number;
+  student_name?: string;
+  class_name: number;
+  class_display?: string;
   date: string;
-  status: string;
-  notes: string | null;
+  status: 'present' | 'absent' | 'late' | 'excused';
+  check_in_time?: string;
+  check_out_time?: string;
+  duration?: number;
+  notes?: string;
+  marked_by?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Student {
-  id: string;
-  full_name: string;
+  id: number;
   student_id: string;
+  first_name: string;
+  last_name: string;
+  full_name?: string;
 }
 
 interface Class {
-  id: string;
+  id: number;
   class_name: string;
 }
 
 const Attendance = () => {
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [filteredAttendance, setFilteredAttendance] = useState<Attendance[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [formData, setFormData] = useState({
-    student_id: "",
-    class_id: "",
+    student: 0,
+    class_name: 0,
     date: new Date().toISOString().split("T")[0],
-    status: "present",
+    status: "present" as 'present' | 'absent' | 'late' | 'excused',
+    check_in_time: "",
+    check_out_time: "",
     notes: "",
   });
 
@@ -55,71 +67,70 @@ const Attendance = () => {
   useEffect(() => {
     const filtered = attendance.filter(
       (record) =>
-        record.students?.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.classes?.class_name.toLowerCase().includes(searchTerm.toLowerCase())
+        record.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        record.class_display?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredAttendance(filtered);
   }, [searchTerm, attendance]);
 
   const fetchAttendance = async () => {
-    const { data, error } = await supabase
-      .from("attendance")
-      .select(`
-        *,
-        students (full_name, student_id),
-        classes (class_name)
-      `)
-      .order("date", { ascending: false });
-
-    if (error) {
+    try {
+      const response = await djangoAPI.getAttendance();
+      // Handle both paginated and direct array responses
+      const attendanceData: Attendance[] = Array.isArray(response) ? response : (response as any).results || [];
+      setAttendance(attendanceData);
+    } catch (error) {
       toast.error("Error fetching attendance");
-    } else {
-      setAttendance(data || []);
+      console.error("Error fetching attendance:", error);
     }
   };
 
   const fetchStudents = async () => {
-    const { data } = await supabase.from("students").select("id, full_name, student_id");
-    setStudents(data || []);
+    try {
+      const response = await djangoAPI.getStudents();
+      // Handle both paginated and direct array responses
+      const studentsData: Student[] = Array.isArray(response) ? response : (response as any).results || [];
+      setStudents(studentsData);
+    } catch (error) {
+      toast.error("Error fetching students");
+      console.error("Error fetching students:", error);
+    }
   };
 
   const fetchClasses = async () => {
-    const { data } = await supabase.from("classes").select("id, class_name");
-    setClasses(data || []);
+    try {
+      const response = await djangoAPI.getClasses();
+      // Handle both paginated and direct array responses
+      const classesData: Class[] = Array.isArray(response) ? response : (response as any).results || [];
+      setClasses(classesData);
+    } catch (error) {
+      toast.error("Error fetching classes");
+      console.error("Error fetching classes:", error);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      toast.error("You must be logged in to mark attendance");
-      return;
-    }
-
-    const { error } = await supabase.from("attendance").insert([
-      {
-        ...formData,
-        marked_by: user.id,
-      },
-    ]);
-
-    if (error) {
-      toast.error("Error marking attendance");
-    } else {
+    try {
+      await djangoAPI.createAttendance(formData);
       toast.success("Attendance marked successfully");
-      fetchAttendance();
+      await fetchAttendance(); // Wait for data to refresh
       resetForm();
+    } catch (error) {
+      toast.error("Error marking attendance");
+      console.error("Error creating attendance:", error);
     }
   };
 
   const resetForm = () => {
     setFormData({
-      student_id: "",
-      class_id: "",
+      student: 0,
+      class_name: 0,
       date: new Date().toISOString().split("T")[0],
       status: "present",
+      check_in_time: "",
+      check_out_time: "",
       notes: "",
     });
     setDialogOpen(false);
@@ -162,36 +173,36 @@ const Attendance = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="student_id">Student</Label>
+                  <Label htmlFor="student">Student</Label>
                   <select
-                    id="student_id"
-                    value={formData.student_id}
+                    id="student"
+                    value={formData.student}
                     onChange={(e) =>
-                      setFormData({ ...formData, student_id: e.target.value })
+                      setFormData({ ...formData, student: parseInt(e.target.value) })
                     }
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     required
                   >
-                    <option value="">Select Student</option>
+                    <option value={0}>Select Student</option>
                     {students.map((student) => (
                       <option key={student.id} value={student.id}>
-                        {student.student_id} - {student.full_name}
+                        {student.student_id} - {student.first_name} {student.last_name}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="class_id">Class</Label>
+                  <Label htmlFor="class_name">Class</Label>
                   <select
-                    id="class_id"
-                    value={formData.class_id}
+                    id="class_name"
+                    value={formData.class_name}
                     onChange={(e) =>
-                      setFormData({ ...formData, class_id: e.target.value })
+                      setFormData({ ...formData, class_name: parseInt(e.target.value) })
                     }
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                     required
                   >
-                    <option value="">Select Class</option>
+                    <option value={0}>Select Class</option>
                     {classes.map((cls) => (
                       <option key={cls.id} value={cls.id}>
                         {cls.class_name}
@@ -217,7 +228,7 @@ const Attendance = () => {
                     id="status"
                     value={formData.status}
                     onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
+                      setFormData({ ...formData, status: e.target.value as 'present' | 'absent' | 'late' | 'excused' })
                     }
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                   >
@@ -226,6 +237,28 @@ const Attendance = () => {
                     <option value="late">Late</option>
                     <option value="excused">Excused</option>
                   </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="check_in_time">Check In Time</Label>
+                  <Input
+                    id="check_in_time"
+                    type="time"
+                    value={formData.check_in_time}
+                    onChange={(e) =>
+                      setFormData({ ...formData, check_in_time: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="check_out_time">Check Out Time</Label>
+                  <Input
+                    id="check_out_time"
+                    type="time"
+                    value={formData.check_out_time}
+                    onChange={(e) =>
+                      setFormData({ ...formData, check_out_time: e.target.value })
+                    }
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="notes">Notes</Label>
@@ -273,13 +306,16 @@ const Attendance = () => {
                     <TableHead>Student</TableHead>
                     <TableHead>Class</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Check In</TableHead>
+                    <TableHead>Check Out</TableHead>
+                    <TableHead>Duration</TableHead>
                     <TableHead>Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAttendance.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center">
+                      <TableCell colSpan={8} className="text-center">
                         No attendance records found
                       </TableCell>
                     </TableRow>
@@ -289,13 +325,16 @@ const Attendance = () => {
                         <TableCell className="font-medium">
                           {new Date(record.date).toLocaleDateString()}
                         </TableCell>
-                        <TableCell>{record.students?.full_name}</TableCell>
-                        <TableCell>{record.classes?.class_name}</TableCell>
+                        <TableCell>{record.student_name}</TableCell>
+                        <TableCell>{record.class_display}</TableCell>
                         <TableCell>
                           <Badge variant={getStatusColor(record.status)}>
                             {record.status}
                           </Badge>
                         </TableCell>
+                        <TableCell>{record.check_in_time || "—"}</TableCell>
+                        <TableCell>{record.check_out_time || "—"}</TableCell>
+                        <TableCell>{record.duration ? `${record.duration.toFixed(2)}h` : "—"}</TableCell>
                         <TableCell>{record.notes || "—"}</TableCell>
                       </TableRow>
                     ))

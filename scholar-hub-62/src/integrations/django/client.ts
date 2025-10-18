@@ -33,6 +33,17 @@ class DjangoAPIClient {
       },
     };
 
+    // Add authorization header for authenticated requests
+    if (options.method && options.method !== 'GET') {
+      const accessToken = localStorage.getItem('django_access_token');
+      if (accessToken) {
+        config.headers = {
+          ...config.headers,
+          'Authorization': `Bearer ${accessToken}`,
+        };
+      }
+    }
+
     // Add CSRF token for non-GET requests
     if (options.method && options.method !== 'GET') {
       // For development, we'll disable CSRF protection in Django settings instead
@@ -57,7 +68,16 @@ class DjangoAPIClient {
   async getAll<T>(resource: string, params?: Record<string, any>): Promise<T[]> {
     const searchParams = params ? new URLSearchParams(params).toString() : '';
     const endpoint = searchParams ? `${resource}/?${searchParams}` : `${resource}/`;
-    const response = await this.request<any>(endpoint);
+
+    const config: RequestInit = {};
+    const accessToken = localStorage.getItem('django_access_token');
+    if (accessToken) {
+      config.headers = {
+        'Authorization': `Bearer ${accessToken}`,
+      };
+    }
+
+    const response = await this.request<any>(endpoint, config);
     if (Array.isArray(response)) {
       return response;
     }
@@ -65,7 +85,14 @@ class DjangoAPIClient {
   }
 
   async getById<T>(resource: string, id: string | number): Promise<T> {
-    return this.request<T>(`${resource}/${id}/`);
+    const config: RequestInit = {};
+    const accessToken = localStorage.getItem('django_access_token');
+    if (accessToken) {
+      config.headers = {
+        'Authorization': `Bearer ${accessToken}`,
+      };
+    }
+    return this.request<T>(`${resource}/${id}/`, config);
   }
 
   async create<T>(resource: string, data: Partial<T>): Promise<T> {

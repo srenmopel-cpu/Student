@@ -30,5 +30,5 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/subjects/', include('subjects.api_urls')),
     path('api/grades/', include('grades.api_urls')),
-    path('api/attendance/', include('attendance.urls')),
+    path('api/attendance/', include('attendance.api_urls')),
 ]
