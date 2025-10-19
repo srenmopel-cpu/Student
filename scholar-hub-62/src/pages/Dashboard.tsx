@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { djangoAPI } from "@/integrations/django/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, BookOpen, GraduationCap, Calendar } from "lucide-react";
@@ -39,82 +39,78 @@ const Dashboard = () => {
   }, []);
 
   const fetchDashboardData = async () => {
-    // Fetch total students
-    const { count: studentsCount } = await supabase
-      .from("students")
-      .select("*", { count: "exact", head: true });
+    try {
+      // Fetch total students
+      const students = await djangoAPI.getStudents();
+      const studentsCount = students.length;
 
-    // Fetch total classes
-    const { count: classesCount } = await supabase
-      .from("classes")
-      .select("*", { count: "exact", head: true });
+      // Fetch total classes
+      const classes = await djangoAPI.getClasses();
+      const classesCount = classes.length;
 
-    // Fetch total subjects
-    const { count: subjectsCount } = await supabase
-      .from("subjects")
-      .select("*", { count: "exact", head: true });
+      // Fetch total subjects
+      const subjects = await djangoAPI.getSubjects();
+      const subjectsCount = subjects.length;
 
-    // Fetch today's attendance
-    const today = new Date().toISOString().split("T")[0];
-    const { count: attendanceCount } = await supabase
-      .from("attendance")
-      .select("*", { count: "exact", head: true })
-      .eq("date", today)
-      .eq("status", "present");
+      // Fetch today's attendance
+      const today = new Date().toISOString().split("T")[0];
+      const attendanceRecords = await djangoAPI.getAttendance({ date: today });
+      const attendanceCount = attendanceRecords.filter(record => record.status === "present").length;
 
-    setStats({
-      totalStudents: studentsCount || 0,
-      totalClasses: classesCount || 0,
-      totalSubjects: subjectsCount || 0,
-      totalAttendanceToday: attendanceCount || 0,
-    });
-
-    // Fetch grade distribution
-    const { data: grades } = await supabase.from("grades").select("grade_value");
-    
-    if (grades) {
-      const distribution = {
-        "A (90-100)": 0,
-        "B (80-89)": 0,
-        "C (70-79)": 0,
-        "D (60-69)": 0,
-        "F (0-59)": 0,
-      };
-
-      grades.forEach((grade) => {
-        const value = parseFloat(String(grade.grade_value));
-        if (value >= 90) distribution["A (90-100)"]++;
-        else if (value >= 80) distribution["B (80-89)"]++;
-        else if (value >= 70) distribution["C (70-79)"]++;
-        else if (value >= 60) distribution["D (60-69)"]++;
-        else distribution["F (0-59)"]++;
+      setStats({
+        totalStudents: studentsCount,
+        totalClasses: classesCount,
+        totalSubjects: subjectsCount,
+        totalAttendanceToday: attendanceCount,
       });
 
-      setGradeDistribution(
-        Object.entries(distribution).map(([name, value]) => ({ name, value }))
-      );
-    }
+      // Fetch grade distribution
+      const grades = await djangoAPI.getGrades();
 
-    // Fetch attendance data for the last 7 days
-    const { data: attendanceRecords } = await supabase
-      .from("attendance")
-      .select("date, status")
-      .gte("date", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+      if (grades) {
+        const distribution = {
+          "A (90-100)": 0,
+          "B (80-89)": 0,
+          "C (70-79)": 0,
+          "D (60-69)": 0,
+          "F (0-59)": 0,
+        };
 
-    if (attendanceRecords) {
-      const attendanceMap = new Map();
-      attendanceRecords.forEach((record) => {
-        const date = record.date;
-        if (!attendanceMap.has(date)) {
-          attendanceMap.set(date, { date, present: 0, absent: 0, late: 0 });
-        }
-        const entry = attendanceMap.get(date);
-        if (record.status === "present") entry.present++;
-        else if (record.status === "absent") entry.absent++;
-        else if (record.status === "late") entry.late++;
-      });
+        grades.forEach((grade) => {
+          const value = parseFloat(String(grade.grade_value));
+          if (value >= 90) distribution["A (90-100)"]++;
+          else if (value >= 80) distribution["B (80-89)"]++;
+          else if (value >= 70) distribution["C (70-79)"]++;
+          else if (value >= 60) distribution["D (60-69)"]++;
+          else distribution["F (0-59)"]++;
+        });
 
-      setAttendanceData(Array.from(attendanceMap.values()).slice(-7));
+        setGradeDistribution(
+          Object.entries(distribution).map(([name, value]) => ({ name, value }))
+        );
+      }
+
+      // Fetch attendance data for the last 7 days
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const allAttendanceRecords = await djangoAPI.getAttendance({ date__gte: sevenDaysAgo });
+
+      if (allAttendanceRecords) {
+        const attendanceMap = new Map();
+        allAttendanceRecords.forEach((record) => {
+          const date = record.date;
+          if (!attendanceMap.has(date)) {
+            attendanceMap.set(date, { date, present: 0, absent: 0, late: 0 });
+          }
+          const entry = attendanceMap.get(date);
+          if (record.status === "present") entry.present++;
+          else if (record.status === "absent") entry.absent++;
+          else if (record.status === "late") entry.late++;
+        });
+
+        setAttendanceData(Array.from(attendanceMap.values()).slice(-7));
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
     }
   };
 

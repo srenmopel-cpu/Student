@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Attendance {
@@ -48,6 +48,8 @@ const Attendance = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<Attendance | null>(null);
   const [formData, setFormData] = useState({
     student: 0,
     class_name: 0,
@@ -113,13 +115,18 @@ const Attendance = () => {
     e.preventDefault();
 
     try {
-      await djangoAPI.createAttendance(formData);
-      toast.success("Attendance marked successfully");
+      if (isEditing && editingRecord) {
+        await djangoAPI.updateAttendance(editingRecord.id, formData);
+        toast.success("Attendance updated successfully");
+      } else {
+        await djangoAPI.createAttendance(formData);
+        toast.success("Attendance marked successfully");
+      }
       await fetchAttendance(); // Wait for data to refresh
       resetForm();
     } catch (error) {
-      toast.error("Error marking attendance");
-      console.error("Error creating attendance:", error);
+      toast.error(`Error ${isEditing ? 'updating' : 'marking'} attendance`);
+      console.error(`Error ${isEditing ? 'updating' : 'creating'} attendance:`, error);
     }
   };
 
@@ -133,6 +140,8 @@ const Attendance = () => {
       check_out_time: "",
       notes: "",
     });
+    setIsEditing(false);
+    setEditingRecord(null);
     setDialogOpen(false);
   };
 
@@ -151,6 +160,34 @@ const Attendance = () => {
     }
   };
 
+  const handleEdit = (record: Attendance) => {
+    setIsEditing(true);
+    setEditingRecord(record);
+    setFormData({
+      student: record.student,
+      class_name: record.class_name,
+      date: record.date,
+      status: record.status,
+      check_in_time: record.check_in_time || "",
+      check_out_time: record.check_out_time || "",
+      notes: record.notes || "",
+    });
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async (record: Attendance) => {
+    if (window.confirm(`Are you sure you want to delete this attendance record for ${record.student_name}?`)) {
+      try {
+        await djangoAPI.deleteAttendance(record.id);
+        toast.success("Attendance record deleted successfully");
+        await fetchAttendance();
+      } catch (error) {
+        toast.error("Error deleting attendance record");
+        console.error("Error deleting attendance:", error);
+      }
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -160,17 +197,17 @@ const Attendance = () => {
             <p className="text-muted-foreground">Track student attendance</p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => resetForm()}>
-                <Plus className="mr-2 h-4 w-4" />
-                Mark Attendance
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Mark Attendance</DialogTitle>
-                <DialogDescription>Record student attendance</DialogDescription>
-              </DialogHeader>
+          <DialogTrigger asChild>
+            <Button onClick={() => resetForm()}>
+              <Plus className="mr-2 h-4 w-4" />
+              Mark Attendance
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{isEditing ? 'Edit Attendance' : 'Mark Attendance'}</DialogTitle>
+              <DialogDescription>{isEditing ? 'Update student attendance record' : 'Record student attendance'}</DialogDescription>
+            </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="student">Student</Label>
@@ -274,7 +311,7 @@ const Attendance = () => {
                   <Button type="button" variant="outline" onClick={resetForm}>
                     Cancel
                   </Button>
-                  <Button type="submit">Mark Attendance</Button>
+                  <Button type="submit">{isEditing ? 'Update Attendance' : 'Mark Attendance'}</Button>
                 </div>
               </form>
             </DialogContent>
@@ -310,12 +347,13 @@ const Attendance = () => {
                     <TableHead>Check Out</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Notes</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAttendance.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center">
+                      <TableCell colSpan={9} className="text-center">
                         No attendance records found
                       </TableCell>
                     </TableRow>
@@ -336,6 +374,24 @@ const Attendance = () => {
                         <TableCell>{record.check_out_time || "—"}</TableCell>
                         <TableCell>{record.duration ? `${record.duration.toFixed(2)}h` : "—"}</TableCell>
                         <TableCell>{record.notes || "—"}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(record)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(record)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
