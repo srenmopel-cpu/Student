@@ -114,7 +114,8 @@ def user_profile(request):
         try:
             from .models import Student
             student = Student.objects.get(user=user)
-            return Response({
+            role = 'student'
+            profile_data = {
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
@@ -123,14 +124,24 @@ def user_profile(request):
                 'student_id': student.student_id,
                 'date_of_birth': student.date_of_birth,
                 'gender': student.gender,
-            })
+                'role': role,
+            }
         except Student.DoesNotExist:
-            return Response({
+            # Determine role based on user permissions
+            if user.is_superuser:
+                role = 'admin'
+            elif user.is_staff:
+                role = 'teacher'
+            else:
+                role = 'teacher'  # Default for non-student users
+            profile_data = {
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-            })
+                'role': role,
+            }
+        return Response(profile_data)
     else:
         return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)

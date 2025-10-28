@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { djangoAPI } from "@/integrations/django/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, BookOpen, GraduationCap, Calendar } from "lucide-react";
+import { Users, BookOpen, GraduationCap, Calendar, Award, BarChart3 } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -22,6 +22,8 @@ interface Stats {
   totalClasses: number;
   totalSubjects: number;
   totalAttendanceToday: number;
+  totalGrades: number;
+  totalAttendanceRecords: number;
 }
 
 const Dashboard = () => {
@@ -30,6 +32,8 @@ const Dashboard = () => {
     totalClasses: 0,
     totalSubjects: 0,
     totalAttendanceToday: 0,
+    totalGrades: 0,
+    totalAttendanceRecords: 0,
   });
   const [gradeDistribution, setGradeDistribution] = useState<any[]>([]);
   const [attendanceData, setAttendanceData] = useState<any[]>([]);
@@ -57,15 +61,25 @@ const Dashboard = () => {
       const attendanceRecords = await djangoAPI.getAttendance({ date: today });
       const attendanceCount = attendanceRecords.filter(record => record.status === "present").length;
 
+      // Fetch total grades
+      const allGrades = await djangoAPI.getGrades();
+      const gradesCount = allGrades ? allGrades.length : 0;
+
+      // Fetch total attendance records
+      const allAttendanceRecordsTotal = await djangoAPI.getAttendance();
+      const attendanceRecordsCount = allAttendanceRecordsTotal ? allAttendanceRecordsTotal.length : 0;
+
       setStats({
         totalStudents: studentsCount,
         totalClasses: classesCount,
         totalSubjects: subjectsCount,
         totalAttendanceToday: attendanceCount,
+        totalGrades: gradesCount,
+        totalAttendanceRecords: attendanceRecordsCount,
       });
 
       // Fetch grade distribution
-      const grades = await djangoAPI.getGrades();
+      const grades = allGrades;
 
       if (grades) {
         const distribution = {
@@ -92,7 +106,7 @@ const Dashboard = () => {
 
       // Fetch attendance data for the last 7 days
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-      const allAttendanceRecords = await djangoAPI.getAttendance({ date__gte: sevenDaysAgo });
+      const allAttendanceRecords = allAttendanceRecordsTotal.filter(record => record.date >= sevenDaysAgo);
 
       if (allAttendanceRecords) {
         const attendanceMap = new Map();
@@ -127,7 +141,7 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Students</CardTitle>
@@ -169,6 +183,28 @@ const Dashboard = () => {
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalAttendanceToday}</div>
               <p className="text-xs text-muted-foreground">Students present</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Grades</CardTitle>
+              <Award className="h-4 w-4 text-warning" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalGrades}</div>
+              <p className="text-xs text-muted-foreground">Grade records</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-info/10 to-info/5 border-info/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Attendance</CardTitle>
+              <BarChart3 className="h-4 w-4 text-info" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalAttendanceRecords}</div>
+              <p className="text-xs text-muted-foreground">Attendance records</p>
             </CardContent>
           </Card>
         </div>

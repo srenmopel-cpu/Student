@@ -30,7 +30,7 @@ export const Layout = ({ children }: LayoutProps) => {
       if (djangoAuth.isAuthenticated()) {
         try {
           const profile = await djangoAuth.getProfile();
-          setUserRole('student'); // Default role for now
+          setUserRole(profile.role || 'student'); // Use role from profile
         } catch (error) {
           console.error('Failed to fetch user profile:', error);
         }
